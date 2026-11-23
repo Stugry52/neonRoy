@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Неоновый рой</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="logo">НЕОНОВЫЙ <span>РОЙ</span></h1>
+
+    <!-- Табло над игрой: сюда JavaScript пишет цифры -->
+    <div class="hud">
+      <span>❤ <b id="hp">5</b></span>
+      <span>Очки <b id="score">0</b></span>
+      <span>Волна <b id="wave">1</b></span>
+      <span>Рекорд <b id="best">0</b></span>
+    </div>
+
+    <div class="stage">
+      <!-- Холст: здесь рисуется вся игра -->
+      <canvas id="game" width="960" height="600"></canvas>
+
+      <!-- Экран «Игра окончена»: появляется, когда здоровье кончилось -->
+      <div id="over" class="over" hidden>
+        <h2>GAME OVER</h2>
+        <p>Очки: <b id="final">0</b></p>
+        <p id="place"></p>
+        <button id="restart">Ещё раз (R)</button>
+      </div>
+    </div>
+
+    <p class="help">WASD или стрелки — ходить · мышь — целиться · зажать кнопку мыши — стрелять</p>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
