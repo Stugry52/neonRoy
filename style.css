@@ -49,3 +49,22 @@ button {
 }
 button:hover { background: #7ff8ff; }
 .help { color: #8888b8; font-size: 14px; margin-top: 10px; }
+
+/* ---------- Прокачка: полоска опыта, экраны выбора, карточки ---------- */
+.xpbar { height: 8px; margin: -4px 0 10px; border-radius: 99px; background: #1a1a3a; overflow: hidden; }
+#xp { height: 100%; width: 0%; background: #ffe600; box-shadow: 0 0 10px #ffe600; transition: width .2s; }
+.over .title { font-size: 44px; color: #00f0ff; text-shadow: 0 0 16px #00f0ff; margin-bottom: 18px; }
+.over .title.gold { color: #ffe600; text-shadow: 0 0 16px #ffe600, 0 0 40px #ffb800; }
+.over .hint { font-size: 15px; color: #8888b8; }
+.cards { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 92%; }
+.card {
+  width: 200px; min-height: 210px; margin: 0; padding: 18px 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  background: rgba(15, 15, 40, .95); color: #e8e8ff; font-weight: 400;
+  border: 2px solid #00f0ff; border-radius: 16px; box-shadow: none;
+  transition: transform .12s, box-shadow .12s;
+}
+.card:hover { background: rgba(25, 25, 60, .95); transform: translateY(-6px) scale(1.03); box-shadow: 0 0 24px rgba(255,255,255,.25); }
+.card .icon { font-size: 52px; line-height: 1.1; }
+.card b { font-size: 20px; color: #fff; }
+.card small { font-size: 14px; color: #a8a8d8; line-height: 1.45; }
