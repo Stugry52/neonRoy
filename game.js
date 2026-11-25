@@ -194,6 +194,18 @@ function updateHud() {
     document.getElementById('hp').textContent = player.hp;
     document.getElementById('score').textContent = score;
     document.getElementById('wave').textContent = wave;
+
+    // 🔥 Полоска топлива (только для огнемётчика)
+    const fuelEl = document.getElementById('fuel');
+    if (fuelEl) {
+        if (player.flame) {
+            fuelEl.style.display = 'block';
+            fuelEl.style.width = (player.fuel / player.fuelMax * 100) + '%';
+            fuelEl.style.background = player.fuel < 20 ? '#ff2e88' : '#ff6a00';
+        } else {
+            fuelEl.style.display = 'none';
+        }
+    }
 }
 
 // ---------- Шаг 5: урон и конец игры ----------
@@ -326,20 +338,44 @@ function draw() {
         glowCircle(e.x, e.y, e.r * 0.55, '#05050d');    // тёмная серединка — получается неоновое кольцо
     }
 
-    // Искры
+    // Искры и пламя
     for (const p of particles) {
-        ctx.globalAlpha = p.life / 50;
-        glowCircle(p.x, p.y, 2.5, p.color);
-    }
-
-    for (const p of particles) {
-    ctx.globalAlpha = p.life / 50;
-    glowCircle(p.x, p.y, p.flame ? 4 : 2.5, p.color);   // ← пламя крупнее
-    }
+        ctx.globalAlpha = p.life / (p.maxLife || 50);
+        glowCircle(p.x, p.y, p.flame ? 4 : 2.5, p.color);
+    }   
     ctx.globalAlpha = 1;
 
     drawPlayer();
     ctx.restore();
+
+    // 🛢 Полоска топлива огнемётчика (рисуем на канвасе)
+    if (player.flame) {
+    const barW = 160, barH = 10;
+    const barX = 20, barY = H - 30;
+    const fill = player.fuel / player.fuelMax;
+
+    // фон
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.fillRect(barX, barY, barW, barH);
+
+    // заполнение
+    ctx.fillStyle = fill < 0.2 ? '#ff2e88' : '#ff6a00';
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 10;
+    ctx.fillRect(barX, barY, barW * fill, barH);
+    ctx.shadowBlur = 0;
+
+    // рамка
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+
+    // подпись
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('🔥 ' + Math.round(player.fuel) + ' / ' + player.fuelMax, barX, barY - 6);
+}
 
     // Надпись «ВОЛНА N»
     if (banner > 0) {
@@ -386,6 +422,24 @@ function drawPlayer() {
     // Основной круг (как у мечника)
     glowCircle(player.x, player.y, player.r, player.color);
 
+    // 🔥 Огнемётчик: показываем конус атаки, когда стреляет
+    if (player.flame) {
+        const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+        const grad = ctx.createRadialGradient(
+            player.x, player.y, player.r,
+            player.x, player.y, player.reach
+        );
+        grad.addColorStop(0, 'rgba(255, 106, 0, 0.25)');
+        grad.addColorStop(1, 'rgba(255, 106, 0, 0)');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(player.x, player.y);
+        ctx.arc(player.x, player.y, player.reach, angle - player.arc, angle + player.arc);
+        ctx.closePath();
+        ctx.fill();
+    }
+
     // 🛡️ Танк: индикатор направления движения (треугольник-щит спереди)
     if (player.tank && player.moving) {
         const a = player.moveAngle;
@@ -431,6 +485,7 @@ function drawPlayer() {
     ctx.textBaseline = 'middle';
     ctx.fillText(player.emoji, player.x, player.y + 1);
     ctx.textBaseline = 'alphabetic';
+
 }
 
 // =============================================================
@@ -474,14 +529,17 @@ const HEROES = [
     },
     {
     name: 'Огнемётчик', emoji: '🔥', color: '#ff6a00',
-    desc: 'Струя пламени: поджигает всех в конусе',
-    hp: 6, speed: 3.5, damage: 1, fireRate: 3,
-    flame: true,          // ← флаг: вместо пуль — струя огня
-    reach: 160,           // дальность струи
-    arc: 0.45,            // полуширина конуса в радианах (~26°)
-    burnDamage: 1,        // урон от горения за тик
-    burnTime: 90,         // кадров горения (1.5 сек)
-    },
+    desc: 'Струя пламени: поджигает всех в конусе. Топливо восстанавливается',
+    hp: 6, speed: 3.5, damage: 0, fireRate: 3,   // ← прямой урон теперь 0 (весь урон — через DoT)
+    flame: true,
+    reach: 220,           // ← было 160: длиннее струя
+    arc: 0.40,            // ← чуть уже, чтобы «чётче» конус
+    burnDamage: 1,        // урон за тик горения
+    burnTime: 150,        // ← было 90: дольше горит (2.5 сек)
+    fuelMax: 100,         // ← новое: объём баллона
+    fuelCost: 1,          // ← новое: трата за один «пуф» (каждые fireRate кадров)
+    fuelRegen: 0.10,      // ← новое: восстановление за кадр (полный баллон за ~5 сек)
+},
     {
     name: 'Танк', emoji: '🛡️', color: '#7dff5e',
     desc: 'Таран: враги получают урон, врезаясь в тебя. Неуязвим спереди',
@@ -498,7 +556,8 @@ let xp, level, xpNeed;     // опыт и уровень — понадобят�
 
 function reset() {
     // Игрок получает ВСЕ характеристики выбранного героя: ...hero
-    player = { x: W / 2, y: H / 2, r: 14, cooldown: 0, invul: 0, moveAngle: 0, moving: false,  ...hero, maxHp: hero.hp }; // ← новое
+    player = { x: W / 2, y: H / 2, r: 14, cooldown: 0, invul: 0, moveAngle: 0, moving: false, fuel: hero.fuelMax ?? 0, 
+      ...hero, maxHp: hero.hp }; // ← новое
     bullets = [];
     enemies = [];
     spawnTimer = 0;
@@ -520,21 +579,38 @@ function reset() {
 
 function shooting() {
     player.cooldown--;
+
+    // 🔥 Восстановление топлива у огнемётчика (каждый кадр)
+    if (player.flame && player.fuel < player.fuelMax) {
+        player.fuel = Math.min(player.fuelMax, player.fuel + player.fuelRegen);
+    }
+
     if (mouse.down && player.cooldown <= 0) {
         const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
-        if (player.tank) {
-            // танк не стреляет — урон наносится касанием (см. tankContact)
-        } else if (player.flame) {
+
+        if (player.flame) {
+            // Нет топлива — не стреляем
+            if (player.fuel < player.fuelCost) {
+                player.cooldown = 10;   // небольшая пауза, чтобы не спамить проверку
+                return;
+            }
+            player.fuel -= player.fuelCost;
             flame(angle);
+            // звук огнемёта тише и ниже (не пищит)
+            sound(180 + Math.random() * 40, 0.06, 'sawtooth', 0.02);
+        } else if (player.tank) {
+            // танк не стреляет
         } else if (player.sword) {
             swing(angle);
+            sound(880, 0.05, 'square', 0.03);
         } else {
             for (let i = 0; i < player.shots; i++) {
                 shoot(angle + (i - (player.shots - 1) / 2) * player.spread);
             }
+            sound(880, 0.05, 'square', 0.03);
         }
+
         player.cooldown = player.fireRate;
-        sound(880, 0.05, 'square', 0.03);
     }
 }
 
@@ -594,67 +670,77 @@ function swing(angle) {
     }
 }
 
-// 🔥 Струя пламени: конус, который поджигает врагов
+// 🔥 Струя пламени: конус, который ПОДЖИГАЕТ врагов (урон — только через DoT)
 function flame(angle) {
-    // 1) Спавним частицы-искры для визуала (не логика, только картинка)
-    for (let i = 0; i < 6; i++) {
+    // 1) Визуал: частицы летят по конусу, живут дольше и добивают до reach
+    for (let i = 0; i < 8; i++) {
         const a = angle + (Math.random() - 0.5) * player.arc * 2;
-        const speed = 4 + Math.random() * 6;
+        const speed = 6 + Math.random() * 8;
         particles.push({
             x: player.x, y: player.y,
             vx: Math.cos(a) * speed,
             vy: Math.sin(a) * speed,
-            life: 12 + Math.random() * 10,
+            life: 22 + Math.random() * 14,      // ← дольше живут (было 12–22)
             color: Math.random() < 0.5 ? '#ff6a00' : '#ffe600',
-            flame: true,                 // помечаем: это пламя, а не искры взрыва
+            flame: true,
+            maxLife: 36,                        // ← для расчёта альфы, см. draw
         });
     }
 
-    // 2) Бьём всех врагов в конусе
+    // 2) Поджигаем всех врагов в конусе. Прямого урона НЕТ.
     for (const e of enemies) {
         if (e.dead) continue;
         const toEnemy = Math.atan2(e.y - player.y, e.x - player.x);
         let diff = Math.abs(toEnemy - angle);
         if (diff > Math.PI) diff = 2 * Math.PI - diff;
         if (dist(e, player) < player.reach + e.r && diff < player.arc) {
-            damageEnemy(e);
-            e.burn = player.burnTime;    // поджигаем
+            // Поджигаем (или обновляем таймер горения)
+            e.burn = Math.max(e.burn || 0, player.burnTime);
+            // Немного искр на самом враге — визуальный отклик
+            if (Math.random() < 0.3) {
+                particles.push({
+                    x: e.x + (Math.random() - 0.5) * e.r,
+                    y: e.y + (Math.random() - 0.5) * e.r,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: -1 - Math.random() * 2,
+                    life: 15, color: '#ff6a00', flame: true, maxLife: 15,
+                });
+            }
         }
     }
 }
 
-function updateBurn(){
-    // 🔥 Урон от горения: тикает у каждого подожжённого врага
-    let burnTimer = 0;
-    function updateBurn() {
-        burnTimer++;
-        if (burnTimer % 20 !== 0) return;   // урон раз в ~0.33 сек
-        for (const e of enemies) {
-            if (e.burn > 0) {
-                e.burn -= 20;
-                e.hp -= player.burnDamage;
-                e.flash = 2;
-                if (Math.random() < 0.5) {
-                    particles.push({
-                        x: e.x + (Math.random() - 0.5) * e.r,
-                        y: e.y + (Math.random() - 0.5) * e.r,
-                        vx: (Math.random() - 0.5) * 2,
-                        vy: -1 - Math.random() * 2,
-                        life: 15, color: '#ff6a00', flame: true,
-                    });
-                }
-                if (e.hp <= 0 && !e.dead) {
-                    e.dead = true;
-                    score += e.points;
-                    explode(e.x, e.y, e.color, 18);
-                    shake = Math.max(shake, 5);
-                    sound(140, 0.15, 'sawtooth', 0.05);
-                    onKill(e);
-                }
+let burnTimer = 0;
+
+function updateBurn() {
+    burnTimer++;
+    if (burnTimer % 20 !== 0) return;   // урон раз в ~0.33 сек
+
+    for (const e of enemies) {
+        if (e.burn > 0) {
+            e.burn -= 20;
+            e.hp -= player.burnDamage;
+            e.flash = 2;
+            if (Math.random() < 0.5) {
+                particles.push({
+                    x: e.x + (Math.random() - 0.5) * e.r,
+                    y: e.y + (Math.random() - 0.5) * e.r,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: -1 - Math.random() * 2,
+                    life: 15, color: '#ff6a00', flame: true, maxLife: 15,
+                });
+            }
+            if (e.hp <= 0 && !e.dead) {
+                e.dead = true;
+                score += e.points;
+                explode(e.x, e.y, e.color, 18);
+                shake = Math.max(shake, 5);
+                sound(140, 0.15, 'sawtooth', 0.05);
+                onKill(e);
             }
         }
-        enemies = enemies.filter(e => !e.dead);
     }
+    enemies = enemies.filter(e => !e.dead);
 }
 
 // 🛡️ Танк: враг, коснувшийся танка, получает урон от тарана.
@@ -664,31 +750,29 @@ function tankContact() {
     if (!player.tank) return;
     if (player.invul > 0) player.invul--;
 
+    const shieldArc = player.tankShieldArc || Math.PI / 2;   // ← было жёстко π/2
+    const tankInvulFrames = player.tankInvul || 40;          // ← было жёстко 40
+
     for (const e of enemies) {
         if (e.dead) continue;
         if (dist(e, player) < e.r + player.r) {
-            // Враг всегда получает урон от тарана
             damageEnemyByContact(e);
 
-            // Угол от танка к врагу
             const toEnemy = Math.atan2(e.y - player.y, e.x - player.x);
             let diff = Math.abs(toEnemy - player.moveAngle);
             if (diff > Math.PI) diff = 2 * Math.PI - diff;
 
-            // Если танк движется и враг в передней полусфере (±90° = π/2)
-            // — танк неуязвим. Иначе (стоит или враг сзади/сбоку) — получает урон.
-            const shielded = player.moving && diff < Math.PI / 2;
+            const shielded = player.moving && diff < shieldArc;  // ← новый порог
 
             if (!shielded && player.invul <= 0) {
                 player.hp--;
-                player.invul = 40;
+                player.invul = tankInvulFrames;                  // ← новый порог
                 explode(player.x, player.y, player.color, 10);
                 shake = 8;
                 sound(90, 0.2, 'sawtooth', 0.05);
                 if (player.hp <= 0) endGame();
             }
 
-            // Отбрасываем врага, чтобы он не «прилипал»
             const a = Math.atan2(e.y - player.y, e.x - player.x);
             e.x += Math.cos(a) * 4;
             e.y += Math.sin(a) * 4;
@@ -785,6 +869,135 @@ function showHeroes() {
     }
     document.getElementById('pick').hidden = false;
 }
+
+// =============================================================
+//  ВСТАВКА 3. ОПЫТ, УРОВНИ И КАРТОЧКИ УЛУЧШЕНИЙ
+// =============================================================
+
+// 👇 Колода улучшений. apply — что карточка делает с игроком p
+const UPGRADES = [
+    { icon: '💥', name: 'Тяжёлые пули', desc: 'Урон +1',
+      apply: p => p.damage += 1 },
+    { icon: '⚡', name: 'Скорострельность', desc: 'Стреляешь на 25% чаще',
+      apply: p => p.fireRate = Math.max(3, p.fireRate * 0.75) },
+    { icon: '🔱', name: 'Ещё ствол', desc: '+1 пуля в залпе',
+      apply: p => { p.shots += 1; p.spread = Math.max(p.spread, 0.15); } },
+    { icon: '🏹', name: 'Бронебойные', desc: 'Пуля пробивает ещё 1 врага',
+      apply: p => p.pierce += 1 },
+    { icon: '👟', name: 'Кроссовки', desc: 'Скорость бега +15%',
+      apply: p => p.speed *= 1.15 },
+    { icon: '❤', name: 'Аптечка', desc: 'Здоровье — до максимума',
+      apply: p => p.hp = p.maxHp },
+    { icon: '🛡', name: 'Броня', desc: 'Максимум здоровья +1',
+      apply: p => { p.maxHp += 1; p.hp += 1; } },
+    { icon: '🗡', name: 'Длинный клинок', desc: 'Меч достаёт на 25% дальше',
+      apply: p => p.reach = (p.reach || 80) * 1.25 },
+];
+
+// Враг погиб — получаем опыт
+function onKill(e) {
+    xp += e.points / 10;            // обычный 1, бегун 1.5, танк 5
+    if (xp >= xpNeed) {                                   // ← новое
+        xp -= xpNeed;                                     // ← новое
+        level++;                                          // ← новое
+        xpNeed = Math.round(xpNeed * 1.4);   // каждый уровень дороже
+        showUpgrades();                                   // ← новое
+    }                                                     // ← новое
+    document.getElementById('level').textContent = level; // ← новое
+    document.getElementById('xp').style.width = (xp / xpNeed * 100) + '%'; // ← новое
+}
+
+function showUpgrades() {
+    paused = true;
+    mouse.down = false;
+
+    // Отбираем только подходящие карточки
+    const pool = UPGRADES.filter(u => {
+        if (u.forFlame && !player.flame) return false;
+        if (u.forTank && !player.tank) return false;
+        return true;
+    });
+
+    const choice = [...pool].sort(() => Math.random() - 0.5).slice(0, 3);
+    const box = document.getElementById('cards');
+    box.innerHTML = '';
+    for (const u of choice) {
+        box.append(makeCard(u.icon, u.name, u.desc, '#ffe600', () => {
+            u.apply(player);
+            document.getElementById('levelup').hidden = true;
+            paused = false;
+            sound(660, 0.12, 'sine', 0.08);
+            sound(990, 0.2, 'sine', 0.08);
+        }));
+    }
+    document.getElementById('levelup').hidden = false;
+    sound(520, 0.3, 'triangle', 0.07);
+}
+
+// =============================================================
+//  ВСТАВКА 4. ОРУЖИЕ: карточки, которые меняют оружие целиком.
+//  Взял оружие — меч убран (sword = false), герой начинает стрелять
+// =============================================================
+UPGRADES.push(
+    { icon: '🌪', name: 'Оружие: Пулемёт', desc: 'Очень часто, но слабее',
+      apply: p => {
+          p.sword = false; p.shots = 1; p.spread = 0.12; p.pierce = 0;
+          p.fireRate = 4; p.bulletSpeed = 12; p.bulletSize = 3;
+          p.damage = Math.max(1, p.damage - 1);
+      } },
+    { icon: '🎆', name: 'Оружие: Дробовик', desc: '6 дробин веером, медленно',
+      apply: p => {
+          p.sword = false; p.shots = 6; p.spread = 0.16; p.pierce = 0;
+          p.fireRate = 24; p.bulletSpeed = 10; p.bulletSize = 4;
+      } },
+    { icon: '⚡', name: 'Оружие: Рельсотрон', desc: 'Урон +2, пробивает всех на пути',
+      apply: p => {
+          p.sword = false; p.shots = 1; p.spread = 0; p.pierce = 99;
+          p.fireRate = 30; p.bulletSpeed = 24; p.bulletSize = 3;
+          p.damage += 2;
+      } },
+    { icon: '🔵', name: 'Оружие: Пушка', desc: 'Огромные медленные ядра',
+      apply: p => {
+          p.sword = false; p.shots = 1; p.spread = 0; p.pierce = 2;
+          p.fireRate = 26; p.bulletSpeed = 7; p.bulletSize = 12;
+          p.damage += 2;
+      } },
+);
+
+// =============================================================
+//  ВСТАВКА 5. КАРТОЧКИ ДЛЯ ОГНЕМЁТЧИКА И ТАНКА
+//  Работают только если у игрока соответствующий флаг.
+//  showUpgrades() отфильтрует неподходящие.
+// =============================================================
+UPGRADES.push(
+    // ---------- 🔥 Огнемётчик ----------
+    { icon: '🔥', name: 'Жарче!', desc: 'Урон горения +1', forFlame: true,
+      apply: p => p.burnDamage += 1 },
+    { icon: '🕯', name: 'Долгое горение', desc: 'Враг горит на 50% дольше', forFlame: true,
+      apply: p => p.burnTime = Math.round(p.burnTime * 1.5) },
+    { icon: '🛢', name: 'Большой баллон', desc: 'Объём топлива +50', forFlame: true,
+      apply: p => { p.fuelMax += 50; p.fuel += 50; } },
+    { icon: '💨', name: 'Быстрая заправка', desc: 'Топливо восстанавливается на 50% быстрее', forFlame: true,
+      apply: p => p.fuelRegen *= 1.5 },
+    { icon: '📏', name: 'Дальнобойный огонь', desc: 'Дальность струи +20%', forFlame: true,
+      apply: p => p.reach = Math.round(p.reach * 1.2) },
+    { icon: '🌊', name: 'Широкий конус', desc: 'Угол струи +30%', forFlame: true,
+      apply: p => p.arc *= 1.3 },
+
+    // ---------- 🛡️ Танк ----------
+    { icon: '💢', name: 'Шипы', desc: 'Урон тарана +2', forTank: true,
+      apply: p => p.contactDamage += 2 },
+    { icon: '🛞', name: 'Гусеницы', desc: 'Скорость танка +20%', forTank: true,
+      apply: p => p.speed *= 1.2 },
+    { icon: '🔰', name: 'Усиленная броня', desc: 'Максимум здоровья +3', forTank: true,
+      apply: p => { p.maxHp += 3; p.hp += 3; } },
+    { icon: '♻', name: 'Быстрый отпор', desc: 'Неуязвимость после удара короче', forTank: true,
+      apply: p => p.tankInvul = Math.max(10, (p.tankInvul || 40) - 15) },
+    { icon: '🪖', name: 'Лобовая броня', desc: 'Защита спереди шире (конус ±120°)', forTank: true,
+      apply: p => p.tankShieldArc = Math.min(Math.PI * 0.85, (p.tankShieldArc || Math.PI / 2) + 0.35) },
+);
+
+
 
 function update() {
     if (gameOver || paused) return;       // на паузе мир стоит
